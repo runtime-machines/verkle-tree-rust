@@ -1,0 +1,139 @@
+name: CI # Continuous Integration
+
+on:
+  pull_request:
+  push:
+      branches:
+      - main
+  workflow_dispatch:
+
+# uncomment this in pair with the script to start the postgres database
+# env:
+#   DATABASE_URL: postgres://postgres:password@localhost:5432/rtmmanagerdb
+
+jobs:
+  ci:
+    name: CI Pipeline
+    runs-on: ubuntu-latest
+    env:
+      SQLX_VERSION: 0.6.2
+      SQLX_FEATURES: "rustls, postgres"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # https://github.com/runtime-machines/wiki/blob/main/devops/gh_actions/webfactory_ssh-agent.md#how-to-add-a-new-external-private-dependency-to-a-repository-pipeline
+      # - uses: webfactory/ssh-agent@v0.7.0
+      #   with:
+      #     ssh-private-key: |
+      #       ${{ secrets.FIRST_KEY }}
+      #       ${{ secrets.NEXT_KEY }}
+      #       ${{ secrets.ANOTHER_KEY }}
+      
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          components: rustfmt, clippy, llvm-tools-preview
+      
+      - name: Restore cached
+        id: cache-restore
+        uses: actions/cache/restore@v3
+        with:
+          path: |
+            ~/.cargo/
+            ./.cargo/
+            ./target/
+          key: ${{ runner.os }}-cargo-lock${{ hashFiles('**Cargo.lock') }}:toml${{ hashFiles('**Cargo.toml') }}
+      
+      # Run Format and Docs checks (without SQLX)
+      - name: Check formatting
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+      - name: Check documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: --no-deps --document-private-items --all-features --workspace --examples
+      
+      # Install grcov
+      - name: Install grcov
+        uses: actions-rs/cargo@v1
+        with:
+          command: install
+          args: >
+            grcov
+
+      # Install SQLX-cli
+      # - name: Install sqlx-cli
+      #   uses: actions-rs/cargo@v1
+      #   with:
+      #     command: install
+      #     args: >
+      #       sqlx-cli
+      # Script to start and make migrations to a local postgres DB
+      # -----
+      # echo ">> Starting Postgres ..."
+      # docker run \
+      #         -d --name postgres \
+      #         -p 5432:5432 \
+      #         -e POSTGRES_USER=${POSTGRES_USER} -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
+      #         -e POSTGRES_DB=rtmmanagerdb \
+      #         postgres
+      # docker start postgres
+      # echo ">> Starting Postgres: > sqlx database create ..."
+      # sqlx database create
+      # echo ">> Starting Postgres: > sqlx migrate run ..."
+      # sqlx migrate run --source ./migrations
+      # -----
+      # - name: Migrate database
+      #   run: |
+      #     sudo apt-get install libpq-dev -y
+      #     ./scripts/run.sh
+
+      # Run clippy
+      - name: Clippy check
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --all-targets --all-features --workspace -- -D warnings
+
+      # - name: Check sqlx-data.json is up-to-date
+      #   run: |
+      #     cargo sqlx prepare --check -- --bin rtm-manager
+
+      # Run test
+      - name: Cargo Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all-features --workspace
+        env: 
+          ENVIRONMENT: local
+          RUSTFLAGS: -C instrument-coverage
+
+      - name: Save Cache
+        id: cache-save
+        uses: actions/cache/save@v3
+        with:
+          path: |
+            ~/.cargo/
+            ./.cargo/
+            ./target/
+          key: ${{ steps.cache-restore.outputs.cache-primary-key }}
+
+      - name: grcov
+        run: grcov . --binary-path ./target/debug/ -s . -t lcov --branch --ignore-not-existing --ignore "*cargo*" -o ./lcov.info
+
+      - name: Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
+          fail_ci_if_error: true
