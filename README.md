@@ -2,7 +2,6 @@
 
 [![CI](https://github.com/runtime-machines/rust-template/workflows/CI/badge.svg)](https://github.com/runtime-machines/verkle-tree-rust/actions)
 [![codecov](https://codecov.io/github/runtime-machines/verkle-tree-rust/branch/main/graph/badge.svg?token=ROR5OUTHJ5)](https://codecov.io/github/runtime-machines/verkle-tree-rust)
-badges to show in the main page
 
 ## Description and scope of the project
 
