@@ -4,7 +4,7 @@ use std::fmt;
 #[derive(Debug)]
 pub enum TrieError {
     DB(String),
-    Decoder(DecoderError),
+    //Decoder(DecoderError),
     InvalidData,
     InvalidStateRoot,
     InvalidProof,
@@ -16,7 +16,7 @@ impl fmt::Display for TrieError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let printable = match *self {
             TrieError::DB(ref err) => format!("trie error: {:?}", err),
-            TrieError::Decoder(ref err) => format!("trie error: {:?}", err),
+            //TrieError::Decoder(ref err) => format!("trie error: {:?}", err),
             TrieError::InvalidData => "trie error: invali data".to_owned(),
             TrieError::InvalidStateRoot => {
                 "trie error: invali state root".to_owned()
@@ -27,11 +27,11 @@ impl fmt::Display for TrieError {
     }
 }
 
-impl From<DecoderError> for TrieError {
-    fn from(error: DecoderError) -> Self {
-        TrieError::Decoder(error)
-    }
-}
+// impl From<DecoderError> for TrieError {
+// fn from(error: DecoderError) -> Self {
+// TrieError::Decoder(error)
+// }
+// }
 
 #[derive(Debug)]
 pub enum MemDBError {}
