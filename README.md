@@ -9,11 +9,11 @@ This is a open source libraty that implements Verkle trees using Rust (:crab:) l
 
 ## Installation
 
-It's a library
+It's a library :confused:
 
 ## License
 
-This project license
+This project license :free:
 
 ## Contribution
 
