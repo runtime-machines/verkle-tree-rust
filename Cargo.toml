@@ -8,7 +8,6 @@ repository = "https://github.com/runtime-machines/verkle-tree-rust"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bandersnatch = { path = "../bandersnatch-main/bandersnatch/" }
 ark-std = { version = "^0.3.0", default-features = false }
 rand = { version = "0.8.3" }
 ark-ff = { version = "^0.3.0", default-features = false }

@@ -1,16 +1,16 @@
 # Title of the projects
 
-[![CI](https://github.com/runtime-machines/rust-template/workflows/CI/badge.svg)](https://github.com/runtime-machines/rust-template/actions)
-[![codecov](https://codecov.io/github/runtime-machines/rust-template/branch/main/graph/badge.svg?token=ROR5OUTHJ5)](https://codecov.io/github/runtime-machines/rust-template)
+[![CI](https://github.com/runtime-machines/rust-template/workflows/CI/badge.svg)](https://github.com/runtime-machines/verkle-tree-rust/actions)
+[![codecov](https://codecov.io/github/runtime-machines/verkle-tree-rust/branch/main/graph/badge.svg?token=ROR5OUTHJ5)](https://codecov.io/github/runtime-machines/verkle-tree-rust)
 badges to show in the main page
 
 ## Description and scope of the project
 
-What is this project for, what it aims to resolve, and what is the meant use case
+This is a open source libraty that implements Verkle trees using Rust (:crab:) lang.
 
 ## Installation
 
-Describe here the steps to build, run and test the application
+It's a library
 
 ## License
 
