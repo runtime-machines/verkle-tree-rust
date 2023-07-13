@@ -1,9 +1,8 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
 use std::sync::Arc;
 
-use super::errors::TrieError;
+use super::{Hasher, Node, TrieError, DB};
 
 pub type TrieResult<T> = Result<T, TrieError>;
 
@@ -41,10 +40,6 @@ pub trait Trie<D: DB, H: Hasher> {
         proof: Vec<Vec<u8>>,
     ) -> TrieResult<Option<Vec<u8>>>;
 }
-
-pub trait Hasher {}
-
-pub trait DB {}
 
 pub struct VerkleTrie<D: DB, H: Hasher> {
     root: Node,
