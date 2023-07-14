@@ -2,11 +2,11 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use super::{Hasher, Node, TrieError, DB};
+use super::{Committer, Hasher, Node, TrieError, DB};
 
 pub type TrieResult<T> = Result<T, TrieError>;
 
-pub trait Trie<D: DB, H: Hasher> {
+pub trait Trie<D: DB, H: Hasher, C: Committer> {
     /// Returns the value for key stored in the trie.
     fn get(&self, key: &[u8]) -> TrieResult<Option<Vec<u8>>>;
 
@@ -41,15 +41,64 @@ pub trait Trie<D: DB, H: Hasher> {
     ) -> TrieResult<Option<Vec<u8>>>;
 }
 
-pub struct VerkleTrie<D: DB, H: Hasher> {
+pub struct VerkleTrie<D: DB, H: Hasher, C: Committer> {
     root: Node,
     root_hash: Vec<u8>,
 
     db: Arc<D>,
     hasher: Arc<H>,
+    committer: Arc<C>,
     backup_db: Option<Arc<D>>,
 
     cache: RefCell<HashMap<Vec<u8>, Vec<u8>>>,
     passing_keys: RefCell<HashSet<Vec<u8>>>,
     gen_keys: RefCell<HashSet<Vec<u8>>>,
+}
+
+impl<D, H, C> Trie<D, H, C> for VerkleTrie<D, H, C>
+where
+    D: DB,
+    H: Hasher,
+    C: Committer,
+{
+    fn get(&self, key: &[u8]) -> TrieResult<Option<Vec<u8>>> {
+        todo!()
+    }
+
+    fn contains(&self, key: &[u8]) -> TrieResult<bool> {
+        todo!()
+    }
+
+    fn insert(&mut self, key: Vec<u8>, value: Vec<u8>) -> TrieResult<()> {
+        todo!()
+    }
+
+    fn remove(&mut self, key: &[u8]) -> TrieResult<bool> {
+        todo!()
+    }
+
+    fn root(&mut self) -> TrieResult<Vec<u8>> {
+        todo!()
+    }
+
+    fn get_proof(&self, key: &[u8]) -> TrieResult<Vec<Vec<u8>>> {
+        todo!()
+    }
+
+    fn verify_proof(
+        &self,
+        root_hash: &[u8],
+        key: &[u8],
+        proof: Vec<Vec<u8>>,
+    ) -> TrieResult<Option<Vec<u8>>> {
+        todo!()
+    }
+}
+
+impl<D, H, C> VerkleTrie<D, H, C>
+where
+    D: DB,
+    H: Hasher,
+    C: Committer,
+{
 }
