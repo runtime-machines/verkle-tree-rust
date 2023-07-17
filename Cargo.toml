@@ -12,3 +12,11 @@ ark-std = { version = "^0.3.0", default-features = false }
 rand = { version = "0.8.3" }
 ark-ff = { version = "^0.3.0", default-features = false }
 ark-ec = { version = "^0.3.0", default-features = false }
+num-bigint = "0.4.3"
+curve25519-dalek = {version = "3.2.0", features = ["serde"] }
+merlin = { version = "3", default-features = false }
+
+[dependencies.bulletproofs]
+git = "https://github.com/runtime-machines/bulletproofs.git"
+branch = "fix-range-proof"
+features = ["avx2_backend", "scalar_range_proof"]

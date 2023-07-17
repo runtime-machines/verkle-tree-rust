@@ -1,3 +1,5 @@
+mod proving_schemes;
+
 mod committer;
 mod db;
 mod errors;
