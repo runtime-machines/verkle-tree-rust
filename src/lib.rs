@@ -1,3 +1,5 @@
+mod proving_schemes;
+
 /// Hello from Magrathea
 pub fn answer() -> u32 {
     42
