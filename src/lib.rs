@@ -1,14 +1,13 @@
-/// Hello from Magrathea
-pub fn answer() -> u32 {
-    42
-}
+mod committer;
+mod db;
+mod errors;
+mod hasher;
+mod node;
+mod trie;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn deep_thought_test() {
-        assert_eq!(answer(), 42);
-    }
-}
+pub use committer::Committer;
+pub use db::DB;
+pub use errors::TrieError;
+pub use hasher::Hasher;
+pub use node::Node;
+pub use trie::{TrieResult, VerkleTrie};

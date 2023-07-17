@@ -1,10 +1,14 @@
 [package]
-name = "rust_template"
+name = "verkle_tree"
 version = "0.1.0"
 edition = "2021"
-description = "Example of Rust GitHub template"
-repository = "https://github.com/runtime-machines/rust-template"
+description = "Verkle tree implementation"
+repository = "https://github.com/runtime-machines/verkle-tree-rust"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+ark-std = { version = "^0.3.0", default-features = false }
+rand = { version = "0.8.3" }
+ark-ff = { version = "^0.3.0", default-features = false }
+ark-ec = { version = "^0.3.0", default-features = false }
