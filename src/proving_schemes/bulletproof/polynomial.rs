@@ -31,7 +31,6 @@ impl Polynomial {
         self.0.len() - 1
     }
 
-    // TODO: check correctness of numerator
     // Creates a polinomial that contains a set of `p` points, by using lagrange
     pub fn lagrange(p: &[(Scalar, Scalar)]) -> Self {
         let k = p.len();
