@@ -1,93 +1,93 @@
-name: Publish Docker image
+# name: Publish Docker image
 
-on:
-  push
+# on:
+#   push
 
-jobs:
-  build:
-    name: Docker Build
-    runs-on: ubuntu-latest
-    if: ${{ github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main'}}
-    steps:
-      - name: Check out the repo
-        uses: actions/checkout@v3
-        with:
-          submodules: recursive
+# jobs:
+#   build:
+#     name: Docker Build
+#     runs-on: ubuntu-latest
+#     if: ${{ github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main'}}
+#     steps:
+#       - name: Check out the repo
+#         uses: actions/checkout@v3
+#         with:
+#           submodules: recursive
 
-      - name: Build
-        uses: docker/build-push-action@v3
-        with:
-          push: false
-          context: .
+#       - name: Build
+#         uses: docker/build-push-action@v3
+#         with:
+#           push: false
+#           context: .
   
-  push_to_registry:
-    name: Push Docker image to Docker Hub
-    runs-on: ubuntu-latest
-    environment: ${{ matrix.pipelines.environment }}
-    if: ${{ github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' }}
-    strategy:
-      fail-fast: true
-      matrix:
-        pipelines:
-          - branch: refs/heads/dev
-            server: dev
-            environment: Dev
-          - branch: refs/heads/main
-            server: prod
-            environment: Main
-    steps:
-      - name: Check out the repo
-        uses: actions/checkout@v3
-        with:
-          submodules: recursive
-        if: ${{ github.ref == matrix.pipelines.branch }}
+#   push_to_registry:
+#     name: Push Docker image to Docker Hub
+#     runs-on: ubuntu-latest
+#     environment: ${{ matrix.pipelines.environment }}
+#     if: ${{ github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' }}
+#     strategy:
+#       fail-fast: true
+#       matrix:
+#         pipelines:
+#           - branch: refs/heads/dev
+#             server: dev
+#             environment: Dev
+#           - branch: refs/heads/main
+#             server: prod
+#             environment: Main
+#     steps:
+#       - name: Check out the repo
+#         uses: actions/checkout@v3
+#         with:
+#           submodules: recursive
+#         if: ${{ github.ref == matrix.pipelines.branch }}
 
-      - uses: azure/docker-login@v1
-        with:
-          login-server: ${{ matrix.pipelines.server }}rtmacr.azurecr.io
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
-        if: ${{ github.ref == matrix.pipelines.branch }}
+#       - uses: azure/docker-login@v1
+#         with:
+#           login-server: ${{ matrix.pipelines.server }}rtmacr.azurecr.io
+#           username: ${{ secrets.ACR_USERNAME }}
+#           password: ${{ secrets.ACR_PASSWORD }}
+#         if: ${{ github.ref == matrix.pipelines.branch }}
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          tags: ${{ matrix.pipelines.server }}rtmacr.azurecr.io/${{ github.event.repository.name }}:${{ github.sha }}
-        if: ${{ github.ref == matrix.pipelines.branch }}
+#       - name: Build and push Docker image
+#         uses: docker/build-push-action@v4
+#         with:
+#           context: .
+#           push: true
+#           tags: ${{ matrix.pipelines.server }}rtmacr.azurecr.io/${{ github.event.repository.name }}:${{ github.sha }}
+#         if: ${{ github.ref == matrix.pipelines.branch }}
 
-  Update-K8s-Manifests:
-    name: Update K8s Deployment Manifest with Image Version
-    needs: push_to_registry
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: true
-      matrix:
-        pipelines:
-          - branch: refs/heads/dev
-            server: dev
-          - branch: refs/heads/main
-            server: prod
-    steps:      
-      - name: Get application code from repo
-        uses: actions/checkout@v3
-        with:
-          repository: runtime-machines/kubernetes-cd
-          ssh-key: ${{ secrets.CD_DEPLOY_KEY }}
-        if: ${{ github.ref == matrix.pipelines.branch }}
+#   Update-K8s-Manifests:
+#     name: Update K8s Deployment Manifest with Image Version
+#     needs: push_to_registry
+#     runs-on: ubuntu-latest
+#     strategy:
+#       fail-fast: true
+#       matrix:
+#         pipelines:
+#           - branch: refs/heads/dev
+#             server: dev
+#           - branch: refs/heads/main
+#             server: prod
+#     steps:      
+#       - name: Get application code from repo
+#         uses: actions/checkout@v3
+#         with:
+#           repository: runtime-machines/kubernetes-cd
+#           ssh-key: ${{ secrets.CD_DEPLOY_KEY }}
+#         if: ${{ github.ref == matrix.pipelines.branch }}
 
-      - name: Update Manifest File
-        uses: mikefarah/yq@master
-        with:
-          cmd: yq -i '.spec|=select(.selector.matchLabels.app=="${{ github.event.repository.name }}").template.spec.containers[0].image = "${{ matrix.pipelines.server }}rtmacr.azurecr.io/${{ github.event.repository.name }}:${{ github.sha }}"' ${{ matrix.pipelines.server }}/${{ github.event.repository.name }}/deployment.yaml
-        if: ${{ github.ref == matrix.pipelines.branch }}
+#       - name: Update Manifest File
+#         uses: mikefarah/yq@master
+#         with:
+#           cmd: yq -i '.spec|=select(.selector.matchLabels.app=="${{ github.event.repository.name }}").template.spec.containers[0].image = "${{ matrix.pipelines.server }}rtmacr.azurecr.io/${{ github.event.repository.name }}:${{ github.sha }}"' ${{ matrix.pipelines.server }}/${{ github.event.repository.name }}/deployment.yaml
+#         if: ${{ github.ref == matrix.pipelines.branch }}
 
-      - name: Commit changes in manifest to repo
-        if: ${{ github.ref == matrix.pipelines.branch }}
-        run: | 
-          git config user.name "GitHub Actions Bot"
-          git config user.email ""
-          git add .
-          git commit -m "Update image version in K8s Deployment manifests file"
-          git push origin
+#       - name: Commit changes in manifest to repo
+#         if: ${{ github.ref == matrix.pipelines.branch }}
+#         run: | 
+#           git config user.name "GitHub Actions Bot"
+#           git config user.email ""
+#           git add .
+#           git commit -m "Update image version in K8s Deployment manifests file"
+#           git push origin
