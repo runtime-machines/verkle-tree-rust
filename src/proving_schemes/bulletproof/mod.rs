@@ -15,18 +15,25 @@ use super::{
     transcript_protocol::TranscriptProtocol, ProvingScheme, MAX_GENERATORS,
 };
 
+/// Represent the `ProvingScheme` based on the Bulletproof protocol
 struct BulletproofPS {
     gens: Vec<RistrettoPoint>,
 }
 
+/// Represent the commitment
 type Node = (Polynomial, CompressedRistretto);
 
+/// Represent the info related to the IPA such as;
+/// - the proof
+/// - the vector commitment of of a and b vectors
+/// - the value of the inner product
 struct InnerProduct {
     proof: InnerProductProof,
     com: CompressedRistretto,
     value: Scalar,
 }
 
+// TODO: handle errors
 // TODO: manage generators more efficiently
 
 impl ProvingScheme for BulletproofPS {
@@ -44,10 +51,9 @@ impl ProvingScheme for BulletproofPS {
 
     fn compute_commitment(&self, bytes: &[[u8; 32]]) -> Node {
         let points = compute_points(bytes);
-        // Lagrange interpolation
+
         let polynomial = Polynomial::lagrange(&points);
 
-        // Commit
         let commitment = RistrettoPoint::multiscalar_mul(
             &polynomial.0,
             &self.gens[..points.len()],
@@ -96,8 +102,6 @@ impl ProvingScheme for BulletproofPS {
         InnerProduct { proof, com, value }
     }
 
-    // TODO: ErrorHandling
-    // TODO: correct to share generators?
     fn verify(
         &self,
         InnerProduct { proof, com, value }: &InnerProduct,
@@ -111,7 +115,6 @@ impl ProvingScheme for BulletproofPS {
 
         let vec_one = vec![Scalar::one(); n];
 
-        // TODO: handle error
         let com = com.decompress().unwrap();
 
         let p = com + (q * value);
@@ -179,7 +182,6 @@ fn split_gens(
 }
 
 fn compute_b_vec(length: usize, position: u64) -> Vec<Scalar> {
-    // TODO: handle types error
     let length: u32 = length.try_into().unwrap();
     (0..length)
         .map(|index| Scalar::from(position.pow(index)))

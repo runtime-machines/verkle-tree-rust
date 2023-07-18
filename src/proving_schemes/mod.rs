@@ -8,13 +8,13 @@ pub trait ProvingScheme {
     type Commit;
     type Proof;
 
-    // Instantiate the `ProvingScheme` instantiating a starting amount of generators
+    // Return a `ProvingScheme` by instantiating a starting amount of generators
     fn instantiate_generators() -> Self;
 
     // Increase the generators' quantity
     fn add_new_generator(&self);
 
-    /// Generate a polynomial and its commitment from slice of points
+    /// Generate a polynomial and its commitment from slice of bytes
     fn compute_commitment(&self, bytes: &[[u8; 32]]) -> Self::Commit;
 
     /// Convert a compressed commitment in a byte array
