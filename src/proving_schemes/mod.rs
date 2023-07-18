@@ -12,7 +12,7 @@ pub trait ProvingScheme {
     fn instantiate_generators() -> Self;
 
     // Increase the generators' quantity
-    fn add_new_generator(&self);
+    fn add_new_generator(&mut self);
 
     /// Generate a polynomial and its commitment from slice of bytes
     fn compute_commitment(&self, bytes: &[[u8; 32]]) -> Self::Commit;
