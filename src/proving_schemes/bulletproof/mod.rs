@@ -28,9 +28,11 @@ struct InnerProductProofCom {
 
 // TODO: manage generators more efficiently
 
-impl ProvingScheme<Node, CompressedRistretto, Scalar, InnerProductProofCom>
-    for BulletproofPS
-{
+impl ProvingScheme for BulletproofPS {
+    type Scalar = Scalar;
+    type Commit = Node;
+    type Proof = InnerProductProofCom;
+
     fn instantiate_generators() -> BulletproofPS {
         let padded_length = (MAX_GENERATORS * 2).next_power_of_two();
         let bp_gens = BulletproofGens::new(padded_length, 1);
@@ -54,7 +56,7 @@ impl ProvingScheme<Node, CompressedRistretto, Scalar, InnerProductProofCom>
         (polynomial, commitment)
     }
 
-    fn prove<BulletproofPS>(
+    fn prove(
         &self,
         (polynomial, _): &Node,
         point: &(u64, [u8; 32]),
@@ -127,8 +129,8 @@ impl ProvingScheme<Node, CompressedRistretto, Scalar, InnerProductProofCom>
             .is_ok()
     }
 
-    fn commitment_to_bytes(com: CompressedRistretto) -> [u8; 32] {
-        com.to_bytes()
+    fn commitment_to_bytes(com: Node) -> [u8; 32] {
+        com.1.to_bytes()
     }
 
     fn add_new_generator(&self) {
@@ -245,7 +247,7 @@ mod test {
 
         let node = scheme.compute_commitment(&bytes);
 
-        let proof = scheme.prove::<BulletproofPS>(&node, &(1, bytes[1]));
+        let proof = scheme.prove(&node, &(1, bytes[1]));
 
         assert!(scheme.verify(&proof, bytes.len(), &(1, bytes[1])));
     }
