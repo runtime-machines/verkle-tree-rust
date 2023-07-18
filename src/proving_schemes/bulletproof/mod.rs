@@ -23,6 +23,8 @@ struct BulletproofPS {
 /// Represent the commitment
 type Node = (Polynomial, CompressedRistretto);
 
+type ScalarPolynomialPoint = (Scalar, Scalar);
+
 /// Represent the info related to the IPA such as;
 /// - the proof
 /// - the vector commitment of of a and b vectors
@@ -40,6 +42,7 @@ impl ProvingScheme for BulletproofPS {
     type Scalar = Scalar;
     type Commit = Node;
     type Proof = InnerProduct;
+    type PolynomialPoint = (u128, [u8; 32]);
 
     fn instantiate_generators() -> BulletproofPS {
         BulletproofPS {
@@ -48,7 +51,7 @@ impl ProvingScheme for BulletproofPS {
     }
 
     fn compute_commitment(&self, bytes: &[[u8; 32]]) -> Node {
-        let points = compute_points(bytes);
+        let points = compute_scalar_polynomial_points(bytes);
 
         let polynomial = Polynomial::lagrange(&points);
 
@@ -64,7 +67,7 @@ impl ProvingScheme for BulletproofPS {
     fn prove(
         &self,
         (polynomial, _): &Node,
-        point: &(u64, [u8; 32]),
+        polynomial_point: &Self::PolynomialPoint,
     ) -> InnerProduct {
         let mut transcript = Transcript::new(b"InnerProductNode");
         let q = (transcript.challenge_scalar(b"w")) * RISTRETTO_BASEPOINT_POINT;
@@ -76,7 +79,7 @@ impl ProvingScheme for BulletproofPS {
         let (g_vec, h_vec) = split_gens(&self.gens[..(n * 2)]);
 
         let a_vec = &polynomial.0;
-        let b_vec = compute_b_vec(n, point.0);
+        let b_vec = compute_b_vec(n, polynomial_point.0);
 
         let com = RistrettoPoint::multiscalar_mul(
             a_vec.iter().chain(&b_vec),
@@ -104,7 +107,7 @@ impl ProvingScheme for BulletproofPS {
         &self,
         InnerProduct { proof, com, value }: &InnerProduct,
         children_count: usize,
-        _point: &(u64, [u8; 32]),
+        polynomial_point: &Self::PolynomialPoint,
     ) -> bool {
         let mut transcript = Transcript::new(b"InnerProductNode");
         let q = (transcript.challenge_scalar(b"w")) * RISTRETTO_BASEPOINT_POINT;
@@ -148,31 +151,39 @@ fn create_gens(gens_capacity: usize) -> Vec<RistrettoPoint> {
     bp_gens.share(0).G(padded_length).cloned().collect()
 }
 
-fn compute_points(bytes: &[[u8; 32]]) -> Vec<(Scalar, Scalar)> {
-    let points: Vec<_> = bytes
+fn compute_scalar_polynomial_points(
+    bytes: &[[u8; 32]],
+) -> Vec<ScalarPolynomialPoint> {
+    let scalar_polynomial_points: Vec<_> = bytes
         .iter()
         .enumerate()
-        .map(|(index, &byte)| point_into_scalar_point(&(index as u64, byte)))
+        .map(|(index, &byte)| {
+            create_scalar_polynomial_point(index as u128, byte)
+        })
         .collect();
 
-    padding_points(&points)
+    padding_scalar_polynomial_points(&scalar_polynomial_points)
 }
 
-fn point_into_scalar_point(
-    &(position, evaluation): &(u64, [u8; 32]),
-) -> (Scalar, Scalar) {
+fn create_scalar_polynomial_point(
+    position: u128,
+    evaluation: [u8; 32],
+) -> ScalarPolynomialPoint {
     (
         Scalar::from(position),
         Scalar::from_bytes_mod_order(evaluation),
     )
 }
 
-fn padding_points(points: &[(Scalar, Scalar)]) -> Vec<(Scalar, Scalar)> {
-    points
+fn padding_scalar_polynomial_points(
+    scalar_polynomial_points: &[ScalarPolynomialPoint],
+) -> Vec<ScalarPolynomialPoint> {
+    scalar_polynomial_points
         .iter()
         .copied()
         .chain(
-            (points.len()..points.len().next_power_of_two())
+            (scalar_polynomial_points.len()
+                ..scalar_polynomial_points.len().next_power_of_two())
                 .map(|index| (Scalar::from(index as u64), Scalar::zero())),
         )
         .collect()
@@ -185,7 +196,7 @@ fn split_gens(
     (g_vec.to_vec(), h_vec.to_vec())
 }
 
-fn compute_b_vec(length: usize, position: u64) -> Vec<Scalar> {
+fn compute_b_vec(length: usize, position: u128) -> Vec<Scalar> {
     let length: u32 = length.try_into().unwrap();
     (0..length)
         .map(|index| Scalar::from(position.pow(index)))
@@ -200,7 +211,7 @@ mod test {
         bulletproof::polynomial::Polynomial, ProvingScheme,
     };
 
-    use super::BulletproofPS;
+    use super::{BulletproofPS, ScalarPolynomialPoint};
 
     fn generate_bytes() -> Vec<[u8; 32]> {
         vec![
@@ -225,7 +236,7 @@ mod test {
         ]
     }
 
-    fn generate_positions() -> Vec<(Scalar, Scalar)> {
+    fn generate_positions() -> Vec<ScalarPolynomialPoint> {
         generate_bytes()
             .iter()
             .enumerate()

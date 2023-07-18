@@ -7,6 +7,7 @@ pub trait ProvingScheme {
     type Scalar;
     type Commit;
     type Proof;
+    type PolynomialPoint;
 
     // Return a `ProvingScheme` by instantiating a starting amount of generators
     fn instantiate_generators() -> Self;
@@ -21,14 +22,17 @@ pub trait ProvingScheme {
     fn commitment_to_bytes(com: Self::Commit) -> [u8; 32];
 
     /// Compute the proof that the point (position, evaluation) is a node's child
-    fn prove(&self, com: &Self::Commit, point: &(u64, [u8; 32]))
-        -> Self::Proof;
+    fn prove(
+        &self,
+        com: &Self::Commit,
+        polynomial_point: &Self::PolynomialPoint,
+    ) -> Self::Proof;
 
     /// Verify that points the point (position, evaluation) is a node's child
     fn verify(
         &self,
         proof: &Self::Proof,
         children_count: usize,
-        point: &(u64, [u8; 32]),
+        polynomial_point: &Self::PolynomialPoint,
     ) -> bool;
 }
