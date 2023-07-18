@@ -2,6 +2,8 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use crate::{Key, LeafNodeValue};
+
 use super::{Committer, Hasher, Node, TrieError, DB};
 
 pub type TrieResult<T> = Result<T, TrieError>;
@@ -42,7 +44,7 @@ pub trait Trie<D: DB, H: Hasher, C: Committer> {
 }
 
 pub struct VerkleTrie<D: DB, H: Hasher, C: Committer> {
-    root: Node,
+    root: Node<C>,
     root_hash: Vec<u8>,
 
     db: Arc<D>,
@@ -101,4 +103,7 @@ where
     H: Hasher,
     C: Committer,
 {
+    fn insert(root: Node<C>, key: Key, value: LeafNodeValue) -> () {
+        todo!()
+    }
 }
