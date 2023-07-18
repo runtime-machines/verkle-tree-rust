@@ -48,6 +48,16 @@ impl Polynomial {
         l
     }
 
+    pub fn eval(&self, x: &Scalar) -> Scalar {
+        let mut x_pow = Scalar::one();
+        let mut y = self.0[0];
+        for (i, _) in self.0.iter().enumerate().skip(1) {
+            x_pow *= x;
+            y += &(x_pow * self.0[i]);
+        }
+        y
+    }
+
     // Remove ending zeroes
     pub fn normalize(&mut self) {
         if self.0.len() > 1 && self.0[self.0.len() - 1] == Scalar::zero() {
