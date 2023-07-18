@@ -1,6 +1,6 @@
 mod polynomial;
 
-use bulletproofs::{BulletproofGens, InnerProductProof};
+use bulletproofs::{inner_product, BulletproofGens, InnerProductProof};
 use curve25519_dalek::{
     constants::RISTRETTO_BASEPOINT_POINT,
     ristretto::{CompressedRistretto, RistrettoPoint},
@@ -21,9 +21,10 @@ struct BulletproofPS {
 
 type Node = (Polynomial, CompressedRistretto);
 
-struct InnerProductProofCom {
+struct InnerProduct {
     proof: InnerProductProof,
     com: CompressedRistretto,
+    value: Scalar,
 }
 
 // TODO: manage generators more efficiently
@@ -31,7 +32,7 @@ struct InnerProductProofCom {
 impl ProvingScheme for BulletproofPS {
     type Scalar = Scalar;
     type Commit = Node;
-    type Proof = InnerProductProofCom;
+    type Proof = InnerProduct;
 
     fn instantiate_generators() -> BulletproofPS {
         let padded_length = (MAX_GENERATORS * 2).next_power_of_two();
@@ -60,7 +61,7 @@ impl ProvingScheme for BulletproofPS {
         &self,
         (polynomial, _): &Node,
         point: &(u64, [u8; 32]),
-    ) -> InnerProductProofCom {
+    ) -> InnerProduct {
         let mut transcript = Transcript::new(b"InnerProductNode");
         let q = (transcript.challenge_scalar(b"w")) * RISTRETTO_BASEPOINT_POINT;
 
@@ -79,6 +80,8 @@ impl ProvingScheme for BulletproofPS {
         )
         .compress();
 
+        let value = inner_product(a_vec, &b_vec);
+
         let proof = InnerProductProof::create(
             &mut transcript,
             &q,
@@ -90,14 +93,14 @@ impl ProvingScheme for BulletproofPS {
             b_vec,
         );
 
-        InnerProductProofCom { proof, com }
+        InnerProduct { proof, com, value }
     }
 
     // TODO: ErrorHandling
     // TODO: correct to share generators?
     fn verify(
         &self,
-        InnerProductProofCom { proof, com }: &InnerProductProofCom,
+        InnerProduct { proof, com, value }: &InnerProduct,
         children_count: usize,
         _point: &(u64, [u8; 32]),
     ) -> bool {
@@ -111,7 +114,7 @@ impl ProvingScheme for BulletproofPS {
         // TODO: handle error
         let com = com.decompress().unwrap();
 
-        let p = com + q;
+        let p = com + (q * value);
 
         let (g_vec, h_vec) = split_gens(&self.gens[..(n * 2)]);
 
