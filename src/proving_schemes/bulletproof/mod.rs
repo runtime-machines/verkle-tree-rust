@@ -191,9 +191,9 @@ fn padding_scalar_polynomial_points(
 
 fn split_gens(
     gens: &[RistrettoPoint],
-) -> (Vec<RistrettoPoint>, Vec<RistrettoPoint>) {
+) -> (&[RistrettoPoint], &[RistrettoPoint]) {
     let (g_vec, h_vec) = gens.split_at((gens.len() + 1) / 2);
-    (g_vec.to_vec(), h_vec.to_vec())
+    (g_vec, h_vec)
 }
 
 fn compute_b_vec(length: usize, position: u128) -> Vec<Scalar> {
