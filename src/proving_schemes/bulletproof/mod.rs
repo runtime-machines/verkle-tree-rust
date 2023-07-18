@@ -42,10 +42,8 @@ impl ProvingScheme for BulletproofPS {
     type Proof = InnerProduct;
 
     fn instantiate_generators() -> BulletproofPS {
-        let padded_length = (MAX_GENERATORS * 2).next_power_of_two();
-        let bp_gens = BulletproofGens::new(padded_length, 1);
         BulletproofPS {
-            gens: bp_gens.share(0).G(padded_length).cloned().collect(),
+            gens: create_gens(MAX_GENERATORS * 2),
         }
     }
 
@@ -139,9 +137,15 @@ impl ProvingScheme for BulletproofPS {
         com.1.to_bytes()
     }
 
-    fn add_new_generator(&self) {
-        todo!()
+    fn add_new_generator(&mut self) {
+        self.gens = create_gens(self.gens.len() + 1);
     }
+}
+
+fn create_gens(gens_capacity: usize) -> Vec<RistrettoPoint> {
+    let padded_length = gens_capacity.next_power_of_two();
+    let bp_gens = BulletproofGens::new(padded_length, 1);
+    bp_gens.share(0).G(padded_length).cloned().collect()
 }
 
 fn compute_points(bytes: &[[u8; 32]]) -> Vec<(Scalar, Scalar)> {
