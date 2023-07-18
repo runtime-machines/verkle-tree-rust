@@ -27,7 +27,7 @@ type ScalarPolynomialPoint = (Scalar, Scalar);
 
 /// Represent the info related to the IPA such as;
 /// - the proof
-/// - the vector commitment of of a and b vectors
+/// - the vector commitment of the vector a
 /// - the value of the inner product
 struct InnerProduct {
     proof: InnerProductProof,
@@ -81,11 +81,8 @@ impl ProvingScheme for BulletproofPS {
         let a_vec = &polynomial.0;
         let b_vec = compute_b_vec(n, polynomial_point.0);
 
-        let com = RistrettoPoint::multiscalar_mul(
-            a_vec.iter().chain(&b_vec),
-            g_vec[..n].iter().chain(&h_vec[..n]),
-        )
-        .compress();
+        let com =
+            RistrettoPoint::multiscalar_mul(a_vec, &g_vec[..n]).compress();
 
         let value = inner_product(a_vec, &b_vec);
 
@@ -114,24 +111,25 @@ impl ProvingScheme for BulletproofPS {
 
         let n = children_count.next_power_of_two();
 
-        let vec_one = vec![Scalar::one(); n];
-
-        let com = com.decompress().unwrap();
-
-        let p = com + (q * value);
+        let g_h_factors = vec![Scalar::one(); n];
 
         let (g_vec, h_vec) = split_gens(&self.gens[..(n * 2)]);
+
+        let a_com = com.decompress().unwrap();
+        let b_vec = compute_b_vec(n, polynomial_point.0);
+        let b_com = RistrettoPoint::multiscalar_mul(b_vec, &h_vec[..n]);
+        let p = a_com + b_com + (q * value);
 
         proof
             .verify(
                 n,
                 &mut transcript,
-                &vec_one,
-                &vec_one,
+                &g_h_factors,
+                &g_h_factors,
                 &p,
                 &q,
-                &g_vec,
-                &h_vec,
+                g_vec,
+                h_vec,
             )
             .is_ok()
     }
