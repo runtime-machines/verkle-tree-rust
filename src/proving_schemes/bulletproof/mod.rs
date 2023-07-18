@@ -1,6 +1,6 @@
 mod polynomial;
 
-use bulletproofs::{inner_product, BulletproofGens, InnerProductProof};
+use bulletproofs::{BulletproofGens, InnerProductProof};
 use curve25519_dalek::{
     constants::RISTRETTO_BASEPOINT_POINT,
     ristretto::{CompressedRistretto, RistrettoPoint},
@@ -11,96 +11,111 @@ use merlin::Transcript;
 
 use self::polynomial::Polynomial;
 
-use super::{transcript_protocol::TranscriptProtocol, ProvingScheme};
+use super::{
+    transcript_protocol::TranscriptProtocol, ProvingScheme, MAX_GENERATORS,
+};
 
 struct BulletproofPS {
     gens: Vec<RistrettoPoint>,
-    polynomial: Polynomial,
-    commitment: CompressedRistretto,
 }
 
-struct InnerProduct {
+type Node = (Polynomial, CompressedRistretto);
+
+struct InnerProductProofCom {
     proof: InnerProductProof,
-    com: RistrettoPoint,
-    result: Scalar,
+    com: CompressedRistretto,
 }
 
-impl ProvingScheme<RistrettoPoint, CompressedRistretto, InnerProduct>
+// TODO: manage generators more efficiently
+
+impl ProvingScheme<Node, CompressedRistretto, Scalar, InnerProductProofCom>
     for BulletproofPS
 {
-    fn compute_commitment(&self, bytes: &[[u8; 32]]) -> BulletproofPS {
-        // Compute generators
-        let gens = compute_gens(bytes.len());
+    fn instantiate_generators() -> BulletproofPS {
+        let padded_length = (MAX_GENERATORS * 2).next_power_of_two();
+        let bp_gens = BulletproofGens::new(padded_length, 1);
+        BulletproofPS {
+            gens: bp_gens.share(0).G(padded_length).cloned().collect(),
+        }
+    }
 
-        let points: Vec<_> = bytes
-            .iter()
-            .enumerate()
-            .map(|(index, &byte)| {
-                (
-                    Scalar::from_bytes_mod_order(byte),
-                    Scalar::from(index as u64),
-                )
-            })
-            .collect();
-
+    fn compute_commitment(&self, bytes: &[[u8; 32]]) -> Node {
+        let points = compute_points(bytes);
         // Lagrange interpolation
         let polynomial = Polynomial::lagrange(&points);
 
         // Commit
-        let commitment =
-            RistrettoPoint::multiscalar_mul(&self.polynomial.0, &gens)
-                .compress();
+        let commitment = RistrettoPoint::multiscalar_mul(
+            &polynomial.0,
+            &self.gens[..points.len()],
+        )
+        .compress();
 
-        BulletproofPS {
-            gens,
-            polynomial,
-            commitment,
-        }
+        (polynomial, commitment)
     }
 
-    fn prove<Protocol>(&self) -> InnerProduct {
+    fn prove<BulletproofPS>(
+        &self,
+        (polynomial, _): &Node,
+        point: &(u64, [u8; 32]),
+    ) -> InnerProductProofCom {
         let mut transcript = Transcript::new(b"InnerProductNode");
-        let n = self.polynomial.0.len();
-        let vec_one = vec![Scalar::one(); n];
         let q = (transcript.challenge_scalar(b"w")) * RISTRETTO_BASEPOINT_POINT;
-        let (g_vec, h_vec) = split_gens(&self.gens);
+
+        let n = polynomial.0.len();
+
+        let g_h_factors = vec![Scalar::one(); n];
+
+        let (g_vec, h_vec) = split_gens(&self.gens[..(n * 2)]);
+
+        let a_vec = &polynomial.0;
+        let b_vec = compute_b_vec(n, point.0);
+
+        let com = RistrettoPoint::multiscalar_mul(
+            a_vec.iter().chain(&b_vec),
+            g_vec[..n].iter().chain(&h_vec[..n]),
+        )
+        .compress();
 
         let proof = InnerProductProof::create(
             &mut transcript,
             &q,
-            &vec_one,
-            &vec_one,
+            &g_h_factors,
+            &g_h_factors,
             g_vec[..n].to_vec(),
             h_vec[..n].to_vec(),
-            self.polynomial.0.clone(),
-            vec_one.to_vec(),
+            a_vec.to_vec(),
+            b_vec,
         );
 
-        let result = inner_product(&self.polynomial.0, &vec_one);
-
-        let com = RistrettoPoint::multiscalar_mul(
-            self.polynomial.0.iter().chain(vec_one.iter()),
-            g_vec.iter().chain(h_vec.iter()),
-        );
-
-        InnerProduct { proof, result, com }
+        InnerProductProofCom { proof, com }
     }
 
     // TODO: ErrorHandling
+    // TODO: correct to share generators?
     fn verify(
-        InnerProduct { proof, result, com }: &InnerProduct,
-        children: &[CompressedRistretto],
+        &self,
+        InnerProductProofCom { proof, com }: &InnerProductProofCom,
+        children_count: usize,
+        _point: &(u64, [u8; 32]),
     ) -> bool {
         let mut transcript = Transcript::new(b"InnerProductNode");
-        let number_of_children = children.len();
-        let vec_one = vec![Scalar::one(); number_of_children];
         let q = (transcript.challenge_scalar(b"w")) * RISTRETTO_BASEPOINT_POINT;
-        let p = com + q * result;
-        let (g_vec, h_vec) = split_gens(&compute_gens(number_of_children));
+
+        let n = children_count.next_power_of_two();
+
+        let vec_one = vec![Scalar::one(); n];
+
+        // TODO: handle error
+        let com = com.decompress().unwrap();
+
+        let p = com + q;
+
+        let (g_vec, h_vec) = split_gens(&self.gens[..(n * 2)]);
 
         proof
             .verify(
-                number_of_children,
+                n,
                 &mut transcript,
                 &vec_one,
                 &vec_one,
@@ -112,21 +127,42 @@ impl ProvingScheme<RistrettoPoint, CompressedRistretto, InnerProduct>
             .is_ok()
     }
 
-    fn get_commitment(&self) -> CompressedRistretto {
-        self.commitment
-    }
-
     fn commitment_to_bytes(com: CompressedRistretto) -> [u8; 32] {
         com.to_bytes()
     }
+
+    fn add_new_generator(&self) {
+        todo!()
+    }
 }
 
-fn compute_gens(children_count: usize) -> Vec<RistrettoPoint> {
-    let children_count = ((children_count + 1) / 2) * 2;
-    let bp_gens = BulletproofGens::new(1, children_count);
-    (0..children_count)
-        .flat_map(|share| bp_gens.share(share).G(1))
+fn compute_points(bytes: &[[u8; 32]]) -> Vec<(Scalar, Scalar)> {
+    let points: Vec<_> = bytes
+        .iter()
+        .enumerate()
+        .map(|(index, &byte)| point_into_scalar_point(&(index as u64, byte)))
+        .collect();
+
+    padding_points(&points)
+}
+
+fn point_into_scalar_point(
+    &(position, evaluation): &(u64, [u8; 32]),
+) -> (Scalar, Scalar) {
+    (
+        Scalar::from(position),
+        Scalar::from_bytes_mod_order(evaluation),
+    )
+}
+
+fn padding_points(points: &[(Scalar, Scalar)]) -> Vec<(Scalar, Scalar)> {
+    points
+        .iter()
         .copied()
+        .chain(
+            (points.len()..points.len().next_power_of_two())
+                .map(|index| (Scalar::from(index as u64), Scalar::zero())),
+        )
         .collect()
 }
 
@@ -137,13 +173,13 @@ fn split_gens(
     (g_vec.to_vec(), h_vec.to_vec())
 }
 
-#[test]
-fn correct_compute_gens() {
-    // Even gens length
-    let gens = compute_gens(6);
-    let (g_vec, h_vec) = split_gens(&gens);
-    assert_eq!(g_vec.len(), 3);
-    assert_eq!(h_vec.len(), 3);
+fn compute_b_vec(length: usize, position: u64) -> Vec<Scalar> {
+    // TODO: handle types error
+    let length: u32 = length.try_into().unwrap();
+    (0..length)
+        .map(|index| Scalar::from(position.pow(index)))
+        .collect()
+}
 
     // Odd gens length
     let gens = compute_gens(5);
