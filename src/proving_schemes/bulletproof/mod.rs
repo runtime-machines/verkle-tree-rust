@@ -1,6 +1,6 @@
 mod polynomial;
 
-use bulletproofs::{inner_product, BulletproofGens, InnerProductProof};
+use bulletproofs::{BulletproofGens, InnerProductProof};
 use curve25519_dalek::{
     constants::RISTRETTO_BASEPOINT_POINT,
     ristretto::{CompressedRistretto, RistrettoPoint},
@@ -21,29 +21,15 @@ struct BulletproofPS {
     gens: Vec<RistrettoPoint>,
 }
 
-/// Represent the commitment
-type Node = (Polynomial, CompressedRistretto);
-
 type ScalarPolynomialPoint = (Scalar, Scalar);
-
-/// Represent the info related to the IPA such as;
-/// - the proof
-/// - the vector commitment of the vector a
-/// - the value of the inner product
-struct InnerProduct {
-    proof: InnerProductProof,
-    com: CompressedRistretto,
-    value: Scalar,
-}
 
 // TODO: handle errors
 // TODO: manage generators more efficiently
 
 impl ProvingScheme for BulletproofPS {
     type Scalar = Scalar;
-    type Commit = Node;
-    type Proof = InnerProduct;
-    type PolynomialPoint = (u128, [u8; 32]);
+    type Commit = CompressedRistretto;
+    type Proof = InnerProductProof;
 
     fn instantiate_generators() -> BulletproofPS {
         BulletproofPS {
@@ -55,18 +41,21 @@ impl ProvingScheme for BulletproofPS {
         self.gens = create_gens(self.gens.len() + 1);
     }
 
-    fn compute_commitment(&self, children: &[Scalar]) -> Node {
+    fn compute_commitment(
+        &self,
+        children: &[Scalar],
+    ) -> (Vec<Scalar>, CompressedRistretto) {
         let points = compute_scalar_polynomial_points(children);
 
-        let polynomial = Polynomial::lagrange(&points);
+        let polynomial_coefficients = Polynomial::lagrange(&points).0;
 
         let commitment = RistrettoPoint::multiscalar_mul(
-            &polynomial.0,
+            &polynomial_coefficients,
             &self.gens[..points.len()],
         )
         .compress();
 
-        (polynomial, commitment)
+        (polynomial_coefficients, commitment)
     }
 
     fn from_bytes_to_scalar(bytes: &[u8]) -> Self::Scalar {
@@ -74,56 +63,47 @@ impl ProvingScheme for BulletproofPS {
     }
 
     fn from_commitment_to_scalar(com: &Self::Commit) -> Self::Scalar {
-        Scalar::hash_from_bytes::<Sha512>(com.1.as_bytes())
-    }
-
-    fn commitment_to_bytes(com: Node) -> [u8; 32] {
-        com.1.to_bytes()
+        Scalar::hash_from_bytes::<Sha512>(com.as_bytes())
     }
 
     fn prove(
         &self,
-        (polynomial, _): &Node,
-        polynomial_point: &Self::PolynomialPoint,
-    ) -> InnerProduct {
-        let mut transcript = Transcript::new(b"InnerProductNode");
+        polynomial_coefficients: &[Scalar],
+        position: u128,
+        _evaluation: Self::Scalar,
+    ) -> InnerProductProof {
+        let mut transcript = Transcript::new(b"InnerProductProofNode");
         let q = (transcript.challenge_scalar(b"w")) * RISTRETTO_BASEPOINT_POINT;
 
-        let n = polynomial.0.len();
+        let n = polynomial_coefficients.len();
 
         let g_h_factors = vec![Scalar::one(); n];
 
         let (g_vec, h_vec) = split_gens(&self.gens[..(n * 2)]);
 
-        let a_vec = &polynomial.0;
-        let b_vec = compute_b_vec(n, polynomial_point.0);
+        let b_vec = compute_b_vec(n, position);
 
-        let com =
-            RistrettoPoint::multiscalar_mul(a_vec, &g_vec[..n]).compress();
-
-        let value = inner_product(a_vec, &b_vec);
-
-        let proof = InnerProductProof::create(
+        InnerProductProof::create(
             &mut transcript,
             &q,
             &g_h_factors,
             &g_h_factors,
             g_vec[..n].to_vec(),
             h_vec[..n].to_vec(),
-            a_vec.to_vec(),
+            polynomial_coefficients.to_vec(),
             b_vec,
-        );
-
-        InnerProduct { proof, com, value }
+        )
     }
 
     fn verify(
         &self,
-        InnerProduct { proof, com, value }: &InnerProduct,
+        com: &CompressedRistretto,
+        proof: &InnerProductProof,
         children_count: usize,
-        polynomial_point: &Self::PolynomialPoint,
+        position: u128,
+        evaluation: Self::Scalar,
     ) -> bool {
-        let mut transcript = Transcript::new(b"InnerProductNode");
+        let mut transcript = Transcript::new(b"InnerProductProofNode");
         let q = (transcript.challenge_scalar(b"w")) * RISTRETTO_BASEPOINT_POINT;
 
         let n = children_count.next_power_of_two();
@@ -133,9 +113,9 @@ impl ProvingScheme for BulletproofPS {
         let (g_vec, h_vec) = split_gens(&self.gens[..(n * 2)]);
 
         let a_com = com.decompress().unwrap();
-        let b_vec = compute_b_vec(n, polynomial_point.0);
+        let b_vec = compute_b_vec(n, position);
         let b_com = RistrettoPoint::multiscalar_mul(b_vec, &h_vec[..n]);
-        let p = a_com + b_com + (q * value);
+        let p = a_com + b_com + (q * evaluation);
 
         proof
             .verify(
@@ -266,12 +246,29 @@ mod test {
             .map(|byte| Scalar::from_bytes_mod_order(*byte))
             .collect();
 
-        let node = scheme.compute_commitment(&scalars);
+        let (polynomial_coefficients, com) =
+            scheme.compute_commitment(&scalars);
 
-        let proof = scheme.prove(&node, &(1, bytes[1]));
+        let proof = scheme.prove(
+            &polynomial_coefficients,
+            1,
+            Scalar::from_bytes_mod_order(bytes[1]),
+        );
 
-        assert!(scheme.verify(&proof, bytes.len(), &(1, bytes[1])));
+        assert!(scheme.verify(
+            &com,
+            &proof,
+            bytes.len(),
+            1,
+            Scalar::from_bytes_mod_order(bytes[1])
+        ));
 
-        assert!(!scheme.verify(&proof, bytes.len(), &(0, bytes[1])));
+        assert!(!scheme.verify(
+            &com,
+            &proof,
+            bytes.len(),
+            0,
+            Scalar::from_bytes_mod_order(bytes[1])
+        ));
     }
 }
