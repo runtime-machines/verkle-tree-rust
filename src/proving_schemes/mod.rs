@@ -16,7 +16,7 @@ pub trait ProvingScheme {
     fn add_new_generator(&mut self);
 
     /// Generate a polynomial and its commitment from slice of bytes
-    fn compute_commitment(&self, bytes: &[[u8; 32]]) -> Self::Commit;
+    fn compute_commitment(&self, children: &[Self::Scalar]) -> Self::Commit;
 
     /// Convert a compressed commitment in a byte array
     fn commitment_to_bytes(com: Self::Commit) -> [u8; 32];

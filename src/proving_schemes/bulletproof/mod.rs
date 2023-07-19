@@ -50,8 +50,12 @@ impl ProvingScheme for BulletproofPS {
         }
     }
 
-    fn compute_commitment(&self, bytes: &[[u8; 32]]) -> Node {
-        let points = compute_scalar_polynomial_points(bytes);
+    fn add_new_generator(&mut self) {
+        self.gens = create_gens(self.gens.len() + 1);
+    }
+
+    fn compute_commitment(&self, children: &[Scalar]) -> Node {
+        let points = compute_scalar_polynomial_points(children);
 
         let polynomial = Polynomial::lagrange(&points);
 
@@ -62,6 +66,10 @@ impl ProvingScheme for BulletproofPS {
         .compress();
 
         (polynomial, commitment)
+    }
+
+    fn commitment_to_bytes(com: Node) -> [u8; 32] {
+        com.1.to_bytes()
     }
 
     fn prove(
@@ -133,14 +141,6 @@ impl ProvingScheme for BulletproofPS {
             )
             .is_ok()
     }
-
-    fn commitment_to_bytes(com: Node) -> [u8; 32] {
-        com.1.to_bytes()
-    }
-
-    fn add_new_generator(&mut self) {
-        self.gens = create_gens(self.gens.len() + 1);
-    }
 }
 
 fn create_gens(gens_capacity: usize) -> Vec<RistrettoPoint> {
@@ -150,27 +150,17 @@ fn create_gens(gens_capacity: usize) -> Vec<RistrettoPoint> {
 }
 
 fn compute_scalar_polynomial_points(
-    bytes: &[[u8; 32]],
+    polynomial_evaluations: &[Scalar],
 ) -> Vec<ScalarPolynomialPoint> {
-    let scalar_polynomial_points: Vec<_> = bytes
+    let scalar_polynomial_points: Vec<_> = polynomial_evaluations
         .iter()
         .enumerate()
-        .map(|(index, &byte)| {
-            create_scalar_polynomial_point(index as u128, byte)
+        .map(|(position, &polynomial_evaluation)| {
+            (Scalar::from(position as u64), polynomial_evaluation)
         })
         .collect();
 
     padding_scalar_polynomial_points(&scalar_polynomial_points)
-}
-
-fn create_scalar_polynomial_point(
-    position: u128,
-    evaluation: [u8; 32],
-) -> ScalarPolynomialPoint {
-    (
-        Scalar::from(position),
-        Scalar::from_bytes_mod_order(evaluation),
-    )
 }
 
 fn padding_scalar_polynomial_points(
@@ -262,8 +252,12 @@ mod test {
     fn correct_prove_verification() {
         let scheme = BulletproofPS::instantiate_generators();
         let bytes: Vec<[u8; 32]> = generate_bytes();
+        let scalars: Vec<_> = bytes
+            .iter()
+            .map(|byte| Scalar::from_bytes_mod_order(*byte))
+            .collect();
 
-        let node = scheme.compute_commitment(&bytes);
+        let node = scheme.compute_commitment(&scalars);
 
         let proof = scheme.prove(&node, &(1, bytes[1]));
 
