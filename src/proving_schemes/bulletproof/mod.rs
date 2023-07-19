@@ -8,6 +8,7 @@ use curve25519_dalek::{
     traits::MultiscalarMul,
 };
 use merlin::Transcript;
+use sha2::Sha512;
 
 use self::polynomial::Polynomial;
 
@@ -66,6 +67,14 @@ impl ProvingScheme for BulletproofPS {
         .compress();
 
         (polynomial, commitment)
+    }
+
+    fn from_bytes_to_scalar(bytes: &[u8]) -> Self::Scalar {
+        Scalar::hash_from_bytes::<Sha512>(bytes)
+    }
+
+    fn from_commitment_to_scalar(com: &Self::Commit) -> Self::Scalar {
+        Scalar::hash_from_bytes::<Sha512>(com.1.as_bytes())
     }
 
     fn commitment_to_bytes(com: Node) -> [u8; 32] {
