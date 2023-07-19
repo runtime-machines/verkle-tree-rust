@@ -271,5 +271,7 @@ mod test {
         let proof = scheme.prove(&node, &(1, bytes[1]));
 
         assert!(scheme.verify(&proof, bytes.len(), &(1, bytes[1])));
+
+        assert!(!scheme.verify(&proof, bytes.len(), &(0, bytes[1])));
     }
 }
