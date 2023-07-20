@@ -1,6 +1,6 @@
 use crate::{Committer, KeyStem};
 
-use super::{CommitNode, SuffixTree};
+use super::{CommitNode, StemNode, SuffixTree};
 
 pub struct ExtensionNode<C: Committer> {
     pub stem: KeyStem,
@@ -9,6 +9,12 @@ pub struct ExtensionNode<C: Committer> {
     c: C::Point, //C = Commit(1, stem, C1, C2)
     pub c_field: C::Scalar,
     suffix_tree: SuffixTree<C>,
+}
+
+impl<C: Committer> StemNode<C> for ExtensionNode<C> {
+    fn get_c_field(&self) -> &<C as Committer>::Scalar {
+        &self.c_field
+    }
 }
 
 impl<C: Committer> CommitNode<C> for ExtensionNode<C> {

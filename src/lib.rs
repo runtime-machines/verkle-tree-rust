@@ -10,7 +10,6 @@ pub use db::DB;
 pub use errors::TrieError;
 pub use hasher::Hasher;
 pub use node::Node;
-use node::{InnerNode, LeafNode};
 pub use trie::{TrieResult, VerkleTrie};
 
 const LEAF_VALUE_SIZE: usize = 32; // 256 bits //should be always mutiple of 2 and less of 512 bits
