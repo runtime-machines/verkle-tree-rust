@@ -1,0 +1,274 @@
+mod polynomial;
+
+use bulletproofs::{BulletproofGens, InnerProductProof};
+use curve25519_dalek::{
+    constants::RISTRETTO_BASEPOINT_POINT,
+    ristretto::{CompressedRistretto, RistrettoPoint},
+    scalar::Scalar,
+    traits::MultiscalarMul,
+};
+use merlin::Transcript;
+use sha2::Sha512;
+
+use self::polynomial::Polynomial;
+
+use super::{
+    transcript_protocol::TranscriptProtocol, ProvingScheme, MAX_GENERATORS,
+};
+
+/// Represent the `ProvingScheme` based on the Bulletproof protocol
+struct BulletproofPS {
+    gens: Vec<RistrettoPoint>,
+}
+
+type ScalarPolynomialPoint = (Scalar, Scalar);
+
+// TODO: handle errors
+// TODO: manage generators more efficiently
+
+impl ProvingScheme for BulletproofPS {
+    type Scalar = Scalar;
+    type Commit = CompressedRistretto;
+    type Proof = InnerProductProof;
+
+    fn instantiate_generators() -> BulletproofPS {
+        BulletproofPS {
+            gens: create_gens(MAX_GENERATORS * 2),
+        }
+    }
+
+    fn add_new_generator(&mut self) {
+        self.gens = create_gens(self.gens.len() + 1);
+    }
+
+    fn compute_commitment(
+        &self,
+        children: &[Scalar],
+    ) -> (Vec<Scalar>, CompressedRistretto) {
+        let points = compute_scalar_polynomial_points(children);
+
+        let polynomial_coefficients = Polynomial::lagrange(&points).0;
+
+        let commitment = RistrettoPoint::multiscalar_mul(
+            &polynomial_coefficients,
+            &self.gens[..points.len()],
+        )
+        .compress();
+
+        (polynomial_coefficients, commitment)
+    }
+
+    fn from_bytes_to_scalar(bytes: &[u8]) -> Self::Scalar {
+        Scalar::hash_from_bytes::<Sha512>(bytes)
+    }
+
+    fn from_commitment_to_scalar(com: &Self::Commit) -> Self::Scalar {
+        Scalar::hash_from_bytes::<Sha512>(com.as_bytes())
+    }
+
+    fn prove(
+        &self,
+        polynomial_coefficients: &[Scalar],
+        position: u128,
+        _evaluation: Self::Scalar,
+    ) -> InnerProductProof {
+        let mut transcript = Transcript::new(b"InnerProductProofNode");
+        let q = (transcript.challenge_scalar(b"w")) * RISTRETTO_BASEPOINT_POINT;
+
+        let n = polynomial_coefficients.len();
+
+        let g_h_factors = vec![Scalar::one(); n];
+
+        let (g_vec, h_vec) = split_gens(&self.gens[..(n * 2)]);
+
+        let b_vec = compute_b_vec(n, position);
+
+        InnerProductProof::create(
+            &mut transcript,
+            &q,
+            &g_h_factors,
+            &g_h_factors,
+            g_vec[..n].to_vec(),
+            h_vec[..n].to_vec(),
+            polynomial_coefficients.to_vec(),
+            b_vec,
+        )
+    }
+
+    fn verify(
+        &self,
+        com: &CompressedRistretto,
+        proof: &InnerProductProof,
+        children_count: usize,
+        position: u128,
+        evaluation: Self::Scalar,
+    ) -> bool {
+        let mut transcript = Transcript::new(b"InnerProductProofNode");
+        let q = (transcript.challenge_scalar(b"w")) * RISTRETTO_BASEPOINT_POINT;
+
+        let n = children_count.next_power_of_two();
+
+        let g_h_factors = vec![Scalar::one(); n];
+
+        let (g_vec, h_vec) = split_gens(&self.gens[..(n * 2)]);
+
+        let a_com = com.decompress().unwrap();
+        let b_vec = compute_b_vec(n, position);
+        let b_com = RistrettoPoint::multiscalar_mul(b_vec, &h_vec[..n]);
+        let p = a_com + b_com + (q * evaluation);
+
+        proof
+            .verify(
+                n,
+                &mut transcript,
+                &g_h_factors,
+                &g_h_factors,
+                &p,
+                &q,
+                g_vec,
+                h_vec,
+            )
+            .is_ok()
+    }
+}
+
+fn create_gens(gens_capacity: usize) -> Vec<RistrettoPoint> {
+    let padded_length = gens_capacity.next_power_of_two();
+    let bp_gens = BulletproofGens::new(padded_length, 1);
+    bp_gens.share(0).G(padded_length).cloned().collect()
+}
+
+fn compute_scalar_polynomial_points(
+    polynomial_evaluations: &[Scalar],
+) -> Vec<ScalarPolynomialPoint> {
+    let scalar_polynomial_points: Vec<_> = polynomial_evaluations
+        .iter()
+        .enumerate()
+        .map(|(position, &polynomial_evaluation)| {
+            (Scalar::from(position as u64), polynomial_evaluation)
+        })
+        .collect();
+
+    padding_scalar_polynomial_points(&scalar_polynomial_points)
+}
+
+fn padding_scalar_polynomial_points(
+    scalar_polynomial_points: &[ScalarPolynomialPoint],
+) -> Vec<ScalarPolynomialPoint> {
+    scalar_polynomial_points
+        .iter()
+        .copied()
+        .chain(
+            (scalar_polynomial_points.len()
+                ..scalar_polynomial_points.len().next_power_of_two())
+                .map(|index| (Scalar::from(index as u64), Scalar::zero())),
+        )
+        .collect()
+}
+
+fn split_gens(
+    gens: &[RistrettoPoint],
+) -> (&[RistrettoPoint], &[RistrettoPoint]) {
+    let (g_vec, h_vec) = gens.split_at((gens.len() + 1) / 2);
+    (g_vec, h_vec)
+}
+
+fn compute_b_vec(length: usize, position: u128) -> Vec<Scalar> {
+    let length: u32 = length.try_into().unwrap();
+    (0..length)
+        .map(|index| Scalar::from(position.pow(index)))
+        .collect()
+}
+
+#[cfg(test)]
+mod test {
+    use curve25519_dalek::scalar::Scalar;
+
+    use crate::proving_schemes::{
+        bulletproof::polynomial::Polynomial, ProvingScheme,
+    };
+
+    use super::{BulletproofPS, ScalarPolynomialPoint};
+
+    fn generate_bytes() -> Vec<[u8; 32]> {
+        vec![
+            [
+                0x90, 0x76, 0x33, 0xfe, 0x1c, 0x4b, 0x66, 0xa4, 0xa2, 0x8d,
+                0x2d, 0xd7, 0x67, 0x83, 0x86, 0xc3, 0x53, 0xd0, 0xde, 0x54,
+                0x55, 0xd4, 0xfc, 0x9d, 0xe8, 0xef, 0x7a, 0xc3, 0x1f, 0x35,
+                0xbb, 0x05,
+            ],
+            [
+                0x6c, 0x33, 0x74, 0xa1, 0x89, 0x4f, 0x62, 0x21, 0x0a, 0xaa,
+                0x2f, 0xe1, 0x86, 0xa6, 0xf9, 0x2c, 0xe0, 0xaa, 0x75, 0xc2,
+                0x77, 0x95, 0x81, 0xc2, 0x95, 0xfc, 0x08, 0x17, 0x9a, 0x73,
+                0x94, 0x0c,
+            ],
+            [
+                0xef, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c,
+                0xf7, 0xa2, 0xde, 0xf9, 0xde, 0x14, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x10,
+            ],
+        ]
+    }
+
+    fn generate_positions() -> Vec<ScalarPolynomialPoint> {
+        generate_bytes()
+            .iter()
+            .enumerate()
+            .map(|(position, &evaluation)| {
+                (
+                    Scalar::from(position as u128),
+                    Scalar::from_bytes_mod_order(evaluation),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn correct_polynomial_construction() {
+        let bytes = generate_positions();
+
+        let polynomial = Polynomial::lagrange(&bytes);
+
+        assert_eq!(polynomial.eval(&Scalar::from(0_u128)), bytes[0].1);
+        assert_eq!(polynomial.eval(&Scalar::from(1_u128)), bytes[1].1);
+        assert_eq!(polynomial.eval(&Scalar::from(2_u128)), bytes[2].1);
+    }
+
+    #[test]
+    fn correct_prove_verification() {
+        let scheme = BulletproofPS::instantiate_generators();
+        let bytes: Vec<[u8; 32]> = generate_bytes();
+        let scalars: Vec<_> = bytes
+            .iter()
+            .map(|byte| Scalar::from_bytes_mod_order(*byte))
+            .collect();
+
+        let (polynomial_coefficients, com) =
+            scheme.compute_commitment(&scalars);
+
+        let proof = scheme.prove(
+            &polynomial_coefficients,
+            1,
+            Scalar::from_bytes_mod_order(bytes[1]),
+        );
+
+        assert!(scheme.verify(
+            &com,
+            &proof,
+            bytes.len(),
+            1,
+            Scalar::from_bytes_mod_order(bytes[1])
+        ));
+
+        assert!(!scheme.verify(
+            &com,
+            &proof,
+            bytes.len(),
+            0,
+            Scalar::from_bytes_mod_order(bytes[1])
+        ));
+    }
+}
